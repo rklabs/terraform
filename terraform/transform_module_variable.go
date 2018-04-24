@@ -5,6 +5,7 @@ import (
 
 	"github.com/hashicorp/terraform/config"
 	"github.com/hashicorp/terraform/config/module"
+	"github.com/hashicorp/terraform/configs"
 	"github.com/hashicorp/terraform/dag"
 )
 
@@ -14,7 +15,7 @@ import (
 // This only adds variables that are referenced by other things in the graph.
 // If a module variable is not referenced, it won't be added to the graph.
 type ModuleVariableTransformer struct {
-	Module *module.Tree
+	Config *configs.Config
 
 	DisablePrune bool // True if pruning unreferenced should be disabled
 }
@@ -104,9 +105,9 @@ func (t *ModuleVariableTransformer) transformSingle(g *Graph, parent, m *module.
 		if !t.DisablePrune {
 			// If the node is not referenced by anything, then we don't need
 			// to include it since it won't be used.
-			if matches := refMap.ReferencedBy(node); len(matches) == 0 {
+			if matches := refMap.Referrers(node); len(matches) == 0 {
 				log.Printf(
-					"[INFO] Not including %q in graph, nothing depends on it",
+					"[INFO] Not including %q in graph because nothing depends on it",
 					dag.VertexName(node))
 				continue
 			}

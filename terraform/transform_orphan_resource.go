@@ -2,7 +2,7 @@ package terraform
 
 import (
 	"github.com/hashicorp/terraform/config"
-	"github.com/hashicorp/terraform/config/module"
+	"github.com/hashicorp/terraform/configs"
 	"github.com/hashicorp/terraform/dag"
 )
 
@@ -19,9 +19,9 @@ type OrphanResourceTransformer struct {
 	// properly find module orphans at our path.
 	State *State
 
-	// Module is the root module. We'll look up the proper configuration
-	// using the graph path.
-	Module *module.Tree
+	// Config is the root node in the configuration tree. We'll look up
+	// the appropriate note in this tree using the path in each node.
+	Config *configs.Config
 }
 
 func (t *OrphanResourceTransformer) Transform(g *Graph) error {

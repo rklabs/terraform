@@ -9,7 +9,10 @@ import (
 	"log"
 	"sync"
 
-	"github.com/hashicorp/terraform/config/module"
+	"github.com/hashicorp/terraform/configs"
+	"github.com/hashicorp/terraform/tfdiags"
+	"github.com/zclconf/go-cty/cty"
+
 	"github.com/hashicorp/terraform/version"
 )
 
@@ -31,9 +34,9 @@ type Plan struct {
 	// plan is applied.
 	Diff *Diff
 
-	// Module represents the entire configuration that was present when this
+	// Config represents the entire configuration that was present when this
 	// plan was created.
-	Module *module.Tree
+	Config *configs.Config
 
 	// State is the Terraform state that was current when this plan was
 	// created.
@@ -44,7 +47,7 @@ type Plan struct {
 
 	// Vars retains the variables that were set when creating the plan, so
 	// that the same variables can be applied during apply.
-	Vars map[string]interface{}
+	Vars map[string]cty.Value
 
 	// Targets, if non-empty, contains a set of resource address strings that
 	// identify graph nodes that were selected as targets for plan.
@@ -86,11 +89,13 @@ type Plan struct {
 // If State is not provided, it is set from the plan. If it _is_ provided,
 // it must be Equal to the state stored in plan, but may have a newer
 // serial.
-func (p *Plan) Context(opts *ContextOpts) (*Context, error) {
+func (p *Plan) Context(opts *ContextOpts) (*Context, tfdiags.Diagnostics) {
 	var err error
 	opts, err = p.contextOpts(opts)
 	if err != nil {
-		return nil, err
+		var diags tfdiags.Diagnostics
+		diags = diags.Append(err)
+		return nil, diags
 	}
 	return NewContext(opts)
 }
@@ -101,7 +106,7 @@ func (p *Plan) contextOpts(base *ContextOpts) (*ContextOpts, error) {
 	opts := base
 
 	opts.Diff = p.Diff
-	opts.Module = p.Module
+	opts.Config = p.Config
 	opts.Targets = p.Targets
 	opts.ProviderSHA256s = p.ProviderSHA256s
 	opts.Destroy = p.Destroy
@@ -128,9 +133,12 @@ func (p *Plan) contextOpts(base *ContextOpts) (*ContextOpts, error) {
 		)
 	}
 
-	opts.Variables = make(map[string]interface{})
+	opts.Variables = make(InputValues)
 	for k, v := range p.Vars {
-		opts.Variables[k] = v
+		opts.Variables[k] = &InputValue{
+			Value:      v,
+			SourceType: ValueFromPlan,
+		}
 	}
 
 	return opts, nil
@@ -158,7 +166,7 @@ func (p *Plan) init() {
 		}
 
 		if p.Vars == nil {
-			p.Vars = make(map[string]interface{})
+			p.Vars = make(map[string]cty.Value)
 		}
 	})
 }

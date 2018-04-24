@@ -3,13 +3,13 @@ package terraform
 import (
 	"log"
 
-	"github.com/hashicorp/terraform/config/module"
+	"github.com/hashicorp/terraform/configs"
 )
 
-// RemoveModuleTransformer implements GraphTransformer to add nodes indicating
+// RemovedModuleTransformer implements GraphTransformer to add nodes indicating
 // when a module was removed from the configuration.
 type RemovedModuleTransformer struct {
-	Module *module.Tree // root module
+	Config *configs.Config // root node in the config tree
 	State  *State
 }
 

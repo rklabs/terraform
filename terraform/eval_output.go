@@ -4,7 +4,13 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/hashicorp/terraform/config/hcl2shim"
+
+	"github.com/zclconf/go-cty/cty/gocty"
+
+	"github.com/hashicorp/hcl2/hcl"
 	"github.com/hashicorp/terraform/config"
+	"github.com/zclconf/go-cty/cty"
 )
 
 // EvalDeleteOutput is an EvalNode implementation that deletes an output
@@ -40,17 +46,17 @@ func (n *EvalDeleteOutput) Eval(ctx EvalContext) (interface{}, error) {
 type EvalWriteOutput struct {
 	Name      string
 	Sensitive bool
-	Value     *config.RawConfig
+	Expr      hcl.Expression
 	// ContinueOnErr allows interpolation to fail during Input
 	ContinueOnErr bool
 }
 
 // TODO: test
 func (n *EvalWriteOutput) Eval(ctx EvalContext) (interface{}, error) {
-	// This has to run before we have a state lock, since interpolation also
+	// This has to run before we have a state lock, since evaluation also
 	// reads the state
-	cfg, err := ctx.Interpolate(n.Value, nil)
-	// handle the error after we have the module from the state
+	val, diags := ctx.EvaluateExpr(n.Expr, cty.DynamicPseudoType, nil)
+	// We'll handle errors below, after we have loaded the module.
 
 	state, lock := ctx.State()
 	if state == nil {
@@ -67,9 +73,9 @@ func (n *EvalWriteOutput) Eval(ctx EvalContext) (interface{}, error) {
 	}
 
 	// handling the interpolation error
-	if err != nil {
+	if diags.HasErrors() {
 		if n.ContinueOnErr || flagWarnOutputErrors {
-			log.Printf("[ERROR] Output interpolation %q failed: %s", n.Name, err)
+			log.Printf("[ERROR] Output interpolation %q failed: %s", n.Name, diags.Err())
 			// if we're continuing, make sure the output is included, and
 			// marked as unknown
 			mod.Outputs[n.Name] = &OutputState{
@@ -78,56 +84,55 @@ func (n *EvalWriteOutput) Eval(ctx EvalContext) (interface{}, error) {
 			}
 			return nil, EvalEarlyExitError{}
 		}
-		return nil, err
+		return nil, diags.Err()
 	}
 
-	// Get the value from the config
-	var valueRaw interface{} = config.UnknownVariableValue
-	if cfg != nil {
-		var ok bool
-		valueRaw, ok = cfg.Get("value")
-		if !ok {
-			valueRaw = ""
+	ty := val.Type()
+	switch {
+	case ty.IsPrimitiveType():
+		// For now we record all primitive types as strings, for compatibility
+		// with our existing state formats.
+		// FIXME: Revise the state format to support any type.
+		var valueTyped string
+		switch {
+		case !val.IsKnown():
+			// Legacy handling of unknown values as a special string.
+			valueTyped = config.UnknownVariableValue
+		case val.IsNull():
+			// State doesn't currently support null, so we'll save as empty string.
+			valueTyped = ""
+		default:
+			err := gocty.FromCtyValue(val, &valueTyped)
+			if err != nil {
+				// Should never happen, because all primitives can convert to string.
+				return nil, fmt.Errorf("cannot marshal %#v for storage in state: %s", err)
+			}
 		}
-		if cfg.IsComputed("value") {
-			valueRaw = config.UnknownVariableValue
-		}
-	}
-
-	switch valueTyped := valueRaw.(type) {
-	case string:
 		mod.Outputs[n.Name] = &OutputState{
 			Type:      "string",
 			Sensitive: n.Sensitive,
 			Value:     valueTyped,
 		}
-	case []interface{}:
+	case ty.IsListType() || ty.IsTupleType() || ty.IsSetType():
+		// For now we'll use our legacy storage forms for list-like types.
+		// This produces a []interface{}.
+		valueTyped := hcl2shim.ConfigValueFromHCL2(val)
 		mod.Outputs[n.Name] = &OutputState{
 			Type:      "list",
 			Sensitive: n.Sensitive,
 			Value:     valueTyped,
 		}
-	case map[string]interface{}:
+	case ty.IsMapType() || ty.IsObjectType():
+		// For now we'll use our legacy storage forms for map-like types.
+		// This produces a map[string]interface{}.
+		valueTyped := hcl2shim.ConfigValueFromHCL2(val)
 		mod.Outputs[n.Name] = &OutputState{
 			Type:      "map",
 			Sensitive: n.Sensitive,
 			Value:     valueTyped,
 		}
-	case []map[string]interface{}:
-		// an HCL map is multi-valued, so if this was read out of a config the
-		// map may still be in a slice.
-		if len(valueTyped) == 1 {
-			mod.Outputs[n.Name] = &OutputState{
-				Type:      "map",
-				Sensitive: n.Sensitive,
-				Value:     valueTyped[0],
-			}
-			break
-		}
-		return nil, fmt.Errorf("output %s type (%T) with %d values not valid for type map",
-			n.Name, valueTyped, len(valueTyped))
 	default:
-		return nil, fmt.Errorf("output %s is not a valid type (%T)\n", n.Name, valueTyped)
+		return nil, fmt.Errorf("output %s is not a valid type (%s)", n.Name, ty.FriendlyName())
 	}
 
 	return nil, nil

@@ -1,7 +1,7 @@
 package terraform
 
 import (
-	"github.com/hashicorp/terraform/config/module"
+	"github.com/hashicorp/terraform/configs"
 )
 
 // RootVariableTransformer is a GraphTransformer that adds all the root
@@ -11,7 +11,7 @@ import (
 // graph since downstream things that depend on them must be able to
 // reach them.
 type RootVariableTransformer struct {
-	Module *module.Tree
+	Config *configs.Config
 }
 
 func (t *RootVariableTransformer) Transform(g *Graph) error {

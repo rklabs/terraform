@@ -4,6 +4,7 @@ import (
 	"log"
 
 	"github.com/hashicorp/terraform/config/module"
+	"github.com/hashicorp/terraform/configs"
 	"github.com/hashicorp/terraform/dag"
 )
 
@@ -14,7 +15,7 @@ import (
 // aren't changing since there is no downside: the state will be available
 // even if the dependent items aren't changing.
 type OutputTransformer struct {
-	Module *module.Tree
+	Config *configs.Config
 }
 
 func (t *OutputTransformer) Transform(g *Graph) error {

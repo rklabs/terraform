@@ -3,21 +3,25 @@ package terraform
 import (
 	"fmt"
 
-	"github.com/hashicorp/terraform/config"
+	"github.com/hashicorp/terraform/config/hcl2shim"
+
+	"github.com/zclconf/go-cty/cty"
+
+	"github.com/hashicorp/hcl2/hcl"
 )
 
 // EvalLocal is an EvalNode implementation that evaluates the
 // expression for a local value and writes it into a transient part of
 // the state.
 type EvalLocal struct {
-	Name  string
-	Value *config.RawConfig
+	Name string
+	Expr hcl.Expression
 }
 
 func (n *EvalLocal) Eval(ctx EvalContext) (interface{}, error) {
-	cfg, err := ctx.Interpolate(n.Value, nil)
-	if err != nil {
-		return nil, fmt.Errorf("local.%s: %s", n.Name, err)
+	val, diags := ctx.EvaluateExpr(n.Expr, cty.DynamicPseudoType, nil)
+	if diags.HasErrors() {
+		return nil, diags.Err()
 	}
 
 	state, lock := ctx.State()
@@ -35,24 +39,15 @@ func (n *EvalLocal) Eval(ctx EvalContext) (interface{}, error) {
 		mod = state.AddModule(ctx.Path())
 	}
 
-	// Get the value from the config
-	var valueRaw interface{} = config.UnknownVariableValue
-	if cfg != nil {
-		var ok bool
-		valueRaw, ok = cfg.Get("value")
-		if !ok {
-			valueRaw = ""
-		}
-		if cfg.IsComputed("value") {
-			valueRaw = config.UnknownVariableValue
-		}
-	}
+	// Lower the value to the legacy form that our state structures still expect.
+	// FIXME: Update mod.Locals to be a map[string]cty.Value .
+	legacyVal := hcl2shim.ConfigValueFromHCL2(val)
 
 	if mod.Locals == nil {
 		// initialize
 		mod.Locals = map[string]interface{}{}
 	}
-	mod.Locals[n.Name] = valueRaw
+	mod.Locals[n.Name] = legacyVal
 
 	return nil, nil
 }

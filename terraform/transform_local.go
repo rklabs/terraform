@@ -2,12 +2,13 @@ package terraform
 
 import (
 	"github.com/hashicorp/terraform/config/module"
+	"github.com/hashicorp/terraform/configs"
 )
 
 // LocalTransformer is a GraphTransformer that adds all the local values
 // from the configuration to the graph.
 type LocalTransformer struct {
-	Module *module.Tree
+	Config *configs.Config
 }
 
 func (t *LocalTransformer) Transform(g *Graph) error {

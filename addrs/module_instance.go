@@ -206,3 +206,68 @@ func (m ModuleInstance) String() string {
 	}
 	return buf.String()
 }
+
+// Ancestors returns a slice containing the receiver and all of its ancestor
+// module instances, all the way up to (and including) the root module.
+// The result is ordered by depth, with the root module always first.
+//
+// Since the result always includes the root module, a caller may choose to
+// ignore it by slicing the result with [1:].
+func (m ModuleInstance) Ancestors() []ModuleInstance {
+	ret := make([]ModuleInstance, 0, len(m)+1)
+	for i := 0; i <= len(m); i++ {
+		ret = append(ret, m[:i])
+	}
+	return ret
+}
+
+// Call returns the module call address that corresponds to the given module
+// instance, along with the address of the module instance that contains it.
+//
+// There is no call for the root module, so this method will panic if called
+// on the root module address.
+//
+// A single module call can produce potentially many module instances, so the
+// result discards any instance key that might be present on the last step
+// of the instance. To retain this, use CallInstance instead.
+//
+// In practice, this just turns the last element of the receiver into a
+// ModuleCall and then returns a slice of the receiever that excludes that
+// last part. This is just a convenience for situations where a call address
+// is required, such as when dealing with *Reference and Referencable values.
+func (m ModuleInstance) Call() (ModuleInstance, ModuleCall) {
+	if len(m) == 0 {
+		panic("cannot produce ModuleCall for root module")
+	}
+
+	inst, lastStep := m[:len(m)-1], m[len(m)-1]
+	return inst, ModuleCall{
+		Name: lastStep.Name,
+	}
+}
+
+// CallInstance returns the module call instance address that corresponds to
+// the given module instance, along with the address of the module instance
+// that contains it.
+//
+// There is no call for the root module, so this method will panic if called
+// on the root module address.
+//
+// In practice, this just turns the last element of the receiver into a
+// ModuleCallInstance and then returns a slice of the receiever that excludes
+// that last part. This is just a convenience for situations where a call\
+// address is required, such as when dealing with *Reference and Referencable
+// values.
+func (m ModuleInstance) CallInstance() (ModuleInstance, ModuleCallInstance) {
+	if len(m) == 0 {
+		panic("cannot produce ModuleCallInstance for root module")
+	}
+
+	inst, lastStep := m[:len(m)-1], m[len(m)-1]
+	return inst, ModuleCallInstance{
+		Call: ModuleCall{
+			Name: lastStep.Name,
+		},
+		Key: lastStep.InstanceKey,
+	}
+}

@@ -1,8 +1,10 @@
 package terraform
 
 import (
-	"github.com/hashicorp/terraform/config/module"
+	"github.com/hashicorp/terraform/addrs"
+	"github.com/hashicorp/terraform/configs"
 	"github.com/hashicorp/terraform/dag"
+	"github.com/hashicorp/terraform/tfdiags"
 )
 
 // DestroyPlanGraphBuilder implements GraphBuilder and is responsible for
@@ -11,8 +13,8 @@ import (
 // Planning a pure destroy operation is simple because we can ignore most
 // ordering configuration and simply reverse the state.
 type DestroyPlanGraphBuilder struct {
-	// Module is the root module for the graph to build.
-	Module *module.Tree
+	// Config is the configuration tree to build the plan from.
+	Config *configs.Config
 
 	// State is the current state
 	State *State
@@ -25,7 +27,7 @@ type DestroyPlanGraphBuilder struct {
 }
 
 // See GraphBuilder
-func (b *DestroyPlanGraphBuilder) Build(path []string) (*Graph, error) {
+func (b *DestroyPlanGraphBuilder) Build(path addrs.ModuleInstance) (*Graph, tfdiags.Diagnostics) {
 	return (&BasicGraphBuilder{
 		Steps:    b.Steps(),
 		Validate: b.Validate,
@@ -49,11 +51,11 @@ func (b *DestroyPlanGraphBuilder) Steps() []GraphTransformer {
 		},
 
 		// Attach the configuration to any resources
-		&AttachResourceConfigTransformer{Module: b.Module},
+		&AttachResourceConfigTransformer{Config: b.Config},
 
 		// Destruction ordering. We require this only so that
 		// targeting below will prune the correct things.
-		&DestroyEdgeTransformer{Module: b.Module, State: b.State},
+		&DestroyEdgeTransformer{Config: b.Config, State: b.State},
 
 		// Target. Note we don't set "Destroy: true" here since we already
 		// created proper destroy ordering.

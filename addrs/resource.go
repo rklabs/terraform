@@ -52,6 +52,10 @@ type ResourceInstance struct {
 	Key      InstanceKey
 }
 
+func (r ResourceInstance) ContainingResource() Resource {
+	return r.Resource
+}
+
 func (r ResourceInstance) String() string {
 	if r.Key == NoKey {
 		return r.Resource.String()
@@ -86,6 +90,15 @@ func (m ModuleInstance) Resource(mode ResourceMode, typeName string, name string
 	}
 }
 
+// Instance produces the address for a specific instance of the receiver
+// that is idenfied by the given key.
+func (r AbsResource) Instance(key InstanceKey) AbsResourceInstance {
+	return AbsResourceInstance{
+		Module:   r.Module,
+		Resource: r.Resource.Instance(key),
+	}
+}
+
 func (r AbsResource) String() string {
 	if len(r.Module) == 0 {
 		return r.Resource.String()
@@ -112,6 +125,16 @@ func (m ModuleInstance) ResourceInstance(mode ResourceMode, typeName string, nam
 			},
 			Key: key,
 		},
+	}
+}
+
+// ContainingResource returns the address of the resource that contains the
+// receving resource instance. In other words, it discards the key portion
+// of the address to produce an AbsResource value.
+func (r AbsResourceInstance) ContainingResource() AbsResource {
+	return AbsResource{
+		Module:   r.Module,
+		Resource: r.Resource.ContainingResource(),
 	}
 }
 
